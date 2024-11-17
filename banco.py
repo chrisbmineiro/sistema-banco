@@ -5,12 +5,35 @@ from datetime import datetime
 from tkinter import simpledialog
 
 
+class ContaIterador:
+    def __init__(self, contas):
+        self.contas = contas
+        self.contador = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        try:
+            conta = self.contas[self.contador]
+            self.contador += 1
+            return conta * 2
+        except IndexError:
+            raise StopIteration
+
+
 class Cliente:
     def __init__(self, endereco):
         self.endereco = endereco
         self.contas = []
 
     def realizar_transacao(self, conta, transacao):
+        if len(conta.historico.transacoes_do_dia()) >= 10:
+            messagebox.showerror(
+                "Erro", "Operação falhou! Número máximo de saques excedido."
+            )
+            return
+        
         transacao.registrar(conta)
 
     def adicionar_conta(self, conta):
@@ -62,13 +85,17 @@ class Conta:
         excedeu_saldo = valor > saldo
 
         if excedeu_saldo:
-            messagebox.showerror("Erro", "Operação falhou! Você não tem saldo suficiente.")
+            messagebox.showerror(
+                "Erro", "Operação falhou! Você não tem saldo suficiente."
+            )
         elif valor > 0:
             self._saldo -= valor
             messagebox.showinfo("Sucesso", "Saque realizado com sucesso!")
             return True
         else:
-            messagebox.showerror("Erro", "Operação falhou! O valor informado é inválido.")
+            messagebox.showerror(
+                "Erro", "Operação falhou! O valor informado é inválido."
+            )
         return False
 
     def depositar(self, valor):
@@ -76,7 +103,9 @@ class Conta:
             self._saldo += valor
             messagebox.showinfo("Sucesso", "Depósito realizado com sucesso!")
         else:
-            messagebox.showerror("Erro", "Operação falhou! O valor informado é inválido.")
+            messagebox.showerror(
+                "Erro", "Operação falhou! O valor informado é inválido."
+            )
             return False
         return True
 
@@ -89,16 +118,24 @@ class ContaCorrente(Conta):
 
     def sacar(self, valor):
         numero_saques = len(
-            [transacao for transacao in self.historico.transacoes if transacao["tipo"] == Saque.__name__]
+            [
+                transacao
+                for transacao in self.historico.transacoes
+                if transacao["tipo"] == Saque.__name__
+            ]
         )
 
         excedeu_limite = valor > self._limite
         excedeu_saques = numero_saques >= self._limite_saques
 
         if excedeu_limite:
-            messagebox.showerror("Erro", "Operação falhou! O valor do saque excede o limite.")
+            messagebox.showerror(
+                "Erro", "Operação falhou! O valor do saque excede o limite."
+            )
         elif excedeu_saques:
-            messagebox.showerror("Erro", "Operação falhou! Número máximo de saques excedido.")
+            messagebox.showerror(
+                "Erro", "Operação falhou! Número máximo de saques excedido."
+            )
         else:
             return super().sacar(valor)
         return False
@@ -124,9 +161,27 @@ class Historico:
             {
                 "tipo": transacao.__class__.__name__,
                 "valor": transacao.valor,
-                "data": datetime.now().strftime("%d-%m-%Y %H:%M:%S"),
+                "data": datetime.now(datetime.timezone.utc).strftime("%d-%m-%Y %H:%M:%S")
             }
         )
+
+    def gerar_relatorio(self, tipo_transacao=None):
+        for transacao in self.transacoes:
+            if tipo_transacao is None or transacao["tipo"].lower() == tipo_transacao.lower():
+                yield transacao
+
+    # data e hora da transação
+    def transacoes_do_dia(self):
+        data_atual = datetime.now(datetime.timezone.utc).date()
+        transacoes = []
+        for transacao in self._transacoes:
+            data_transacao = datetime.strptime(
+                transacao["data"], "%d-%m-%Y %H:%M:%S"
+            ).date()
+            if data_transacao == data_atual:
+                transacoes.append(transacao)
+
+        return transacoes
 
 
 class Transacao(ABC):
@@ -168,6 +223,10 @@ class Deposito(Transacao):
             conta.historico.adicionar_transacao(self)
 
 
+def log_transacao(func):
+    pass
+
+
 class BancoApp:
     def __init__(self, root):
         self.clientes = []
@@ -179,40 +238,93 @@ class BancoApp:
         self.menu_frame = tk.Frame(self.root)
         self.menu_frame.pack(pady=10)
 
-        self.depositar_button = tk.Button(self.menu_frame, text="Depositar", command=self.depositar)
+        self.depositar_button = tk.Button(
+            self.menu_frame, text="Depositar", command=self.depositar
+        )
         self.depositar_button.grid(row=0, column=0, padx=10)
 
         self.sacar_button = tk.Button(self.menu_frame, text="Sacar", command=self.sacar)
         self.sacar_button.grid(row=0, column=1, padx=10)
 
-        self.extrato_button = tk.Button(self.menu_frame, text="Extrato", command=self.exibir_extrato)
+        self.extrato_button = tk.Button(
+            self.menu_frame, text="Extrato", command=self.exibir_extrato
+        )
         self.extrato_button.grid(row=0, column=2, padx=10)
 
-        self.nova_conta_button = tk.Button(self.menu_frame, text="Nova Conta", command=self.criar_conta)
+        self.nova_conta_button = tk.Button(
+            self.menu_frame, text="Nova Conta", command=self.criar_conta
+        )
         self.nova_conta_button.grid(row=1, column=0, padx=10)
 
-        self.listar_contas_button = tk.Button(self.menu_frame, text="Listar Contas", command=self.listar_contas)
+        self.listar_contas_button = tk.Button(
+            self.menu_frame, text="Listar Contas", command=self.listar_contas
+        )
         self.listar_contas_button.grid(row=1, column=1, padx=10)
 
-        self.novo_usuario_button = tk.Button(self.menu_frame, text="Novo Usuário", command=self.criar_cliente)
+        self.novo_usuario_button = tk.Button(
+            self.menu_frame, text="Novo Usuário", command=self.criar_cliente
+        )
         self.novo_usuario_button.grid(row=1, column=2, padx=10)
 
     def filtrar_cliente(self, cpf):
-        clientes_filtrados = [cliente for cliente in self.clientes if cliente.cpf == cpf]
+        clientes_filtrados = [
+            cliente for cliente in self.clientes if cliente.cpf == cpf
+        ]
         return clientes_filtrados[0] if clientes_filtrados else None
 
     def recuperar_conta_cliente(self, cliente):
         if not cliente.contas:
             messagebox.showerror("Erro", "Cliente não possui conta!")
-            return None
+            return
 
         if len(cliente.contas) == 1:
             return cliente.contas[0]
 
-        contas_str = "\n".join([f"{i + 1} - Conta: {conta.numero}" for i, conta in enumerate(cliente.contas)])
-        conta_idx = simpledialog.askinteger("Escolha a Conta", f"Escolha a conta:\n{contas_str}") - 1
+        contas_str = "\n".join(
+            [
+                f"{i + 1} - Conta: {conta.numero}"
+                for i, conta in enumerate(cliente.contas)
+            ]
+        )
+        conta_idx = (
+            simpledialog.askinteger(
+                "Escolha a Conta", f"Escolha a conta:\n{contas_str}"
+            )
+            - 1
+        )
         return cliente.contas[conta_idx]
+    
+    @log_transacao
+    def exibir_extrato(self):
+        cpf = simpledialog.askstring("Extrato", "Informe o CPF do cliente:")
+        cliente = self.filtrar_cliente(cpf)
+    
+        if not cliente:
+            messagebox.showerror("Erro", "Cliente não encontrado!")
+            return
+    
+        conta = self.recuperar_conta_cliente(cliente)
+        if not conta:
+            return
+    
+        messagebox.showinfo("", "========== EXTRATO ==========")
+        extrato = ""
+        tem_transacao = False
+        
+        for transacao in conta.historico.transacoes:
+            tem_transacao = True
+            extrato += (
+                f"{transacao['tipo']}:\n"
+                f"\tR$ {transacao['valor']:.2f} - {transacao['data']}\n"
+            )
+        
+        if not tem_transacao:
+            extrato = "Não foram realizadas movimentações."
+        
+        messagebox.showinfo("Extrato do Cliente", extrato)
+    
 
+    @log_transacao
     def depositar(self):
         cpf = simpledialog.askstring("Depositar", "Informe o CPF do cliente:")
         cliente = self.filtrar_cliente(cpf)
@@ -230,6 +342,7 @@ class BancoApp:
 
         cliente.realizar_transacao(conta, transacao)
 
+    @log_transacao
     def sacar(self):
         cpf = simpledialog.askstring("Sacar", "Informe o CPF do cliente:")
         cliente = self.filtrar_cliente(cpf)
@@ -247,6 +360,7 @@ class BancoApp:
 
         cliente.realizar_transacao(conta, transacao)
 
+    @log_transacao
     def exibir_extrato(self):
         cpf = simpledialog.askstring("Extrato", "Informe o CPF do cliente:")
         cliente = self.filtrar_cliente(cpf)
@@ -261,13 +375,19 @@ class BancoApp:
 
         transacoes = conta.historico.transacoes
 
-        extrato = "\n".join([f"{transacao['tipo']}: R$ {transacao['valor']:.2f}" for transacao in transacoes])
+        extrato = "\n".join(
+            [
+                f"{transacao['tipo']}: R$ {transacao['valor']:.2f}"
+                for transacao in transacoes
+            ]
+        )
         if not extrato:
             extrato = "Não foram realizadas movimentações."
         saldo = f"\nSaldo: R$ {conta.saldo:.2f}"
 
         messagebox.showinfo("Extrato", extrato + saldo)
 
+    @log_transacao
     def criar_cliente(self):
         cpf = simpledialog.askstring("Novo Usuário", "Informe o CPF (somente números):")
         cliente = self.filtrar_cliente(cpf)
@@ -277,20 +397,30 @@ class BancoApp:
             return
 
         nome = simpledialog.askstring("Novo Usuário", "Informe o nome completo:")
-        data_nascimento = simpledialog.askstring("Novo Usuário", "Informe a data de nascimento (dd-mm-aaaa):")
-        endereco = simpledialog.askstring("Novo Usuário", "Informe o endereço (logradouro, nro - bairro - cidade/sigla estado):")
+        data_nascimento = simpledialog.askstring(
+            "Novo Usuário", "Informe a data de nascimento (dd-mm-aaaa):"
+        )
+        endereco = simpledialog.askstring(
+            "Novo Usuário",
+            "Informe o endereço (logradouro, nro - bairro - cidade/sigla estado):",
+        )
 
-        cliente = PessoaFisica(nome=nome, data_nascimento=data_nascimento, cpf=cpf, endereco=endereco)
+        cliente = PessoaFisica(
+            nome=nome, data_nascimento=data_nascimento, cpf=cpf, endereco=endereco
+        )
         self.clientes.append(cliente)
 
         messagebox.showinfo("Sucesso", "Cliente criado com sucesso!")
 
+    @log_transacao
     def criar_conta(self):
         cpf = simpledialog.askstring("Nova Conta", "Informe o CPF do cliente:")
         cliente = self.filtrar_cliente(cpf)
 
         if not cliente:
-            messagebox.showerror("Erro", "Cliente não encontrado, fluxo de criação de conta encerrado!")
+            messagebox.showerror(
+                "Erro", "Cliente não encontrado, fluxo de criação de conta encerrado!"
+            )
             return
 
         numero_conta = len(self.contas) + 1
